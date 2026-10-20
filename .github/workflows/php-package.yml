@@ -1,0 +1,137 @@
+# The CI of one PHP package of the omni families, called by each package's
+# .github/workflows/ci.yml:
+#
+#   jobs:
+#     package:
+#       uses: glitchr-studio/ci/.github/workflows/php-package.yml@main
+#       with:
+#         smoke-class: Omnibridge\Runtime
+#
+# One job in ghcr.io/glitchr-studio/php:8.4 (no apt-get, no extension built
+# here), the package installed alone as its own root package - no site, no
+# --ignore-platform-reqs, dependencies resolved afresh as a consumer gets
+# them (a library's lock, when it keeps one, is not what its users install) -
+# then:
+#   1. composer validate;
+#   2. PHPUnit;
+#   3. PHPStan with the package's phpstan.neon and its baseline
+#      (phpstan-baseline.neon): what the baseline lists is known, anything new
+#      fails the job. Without a baseline the job writes one, uploads it as the
+#      artifact "phpstan-baseline" and fails: commit it;
+#   4. the package installed again, without its require-dev, into an empty
+#      project, as a consumer does, and smoke-class autoloaded from it.
+# typesense-image starts a Typesense server beside the job
+# (TYPESENSE_URL=http://typesense:8108, TYPESENSE_KEY=xyz).
+name: php-package
+
+on:
+  workflow_call:
+    inputs:
+      phpunit-args:
+        description: Arguments for vendor/bin/phpunit.
+        type: string
+        default: ''
+      phpstan:
+        description: Run PHPStan (phpstan.neon at the package root).
+        type: boolean
+        default: true
+      smoke-class:
+        description: A class (or interface) the consumer install must autoload; empty skips that step.
+        type: string
+        default: ''
+      typesense-image:
+        description: A Typesense image to run beside the job, e.g. typesense/typesense:30.0.rca41; empty for none.
+        type: string
+        default: ''
+      image:
+        description: The CI image.
+        type: string
+        default: ghcr.io/glitchr-studio/php:8.4
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP 8.4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ${{ inputs.image }}
+    services:
+      typesense:
+        image: ${{ inputs.typesense-image }}
+        env:
+          TYPESENSE_API_KEY: xyz
+          TYPESENSE_DATA_DIR: /tmp
+    env:
+      # Dist archives from GitHub through the API: the job's token lifts the anonymous rate limit.
+      COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
+      TYPESENSE_URL: ${{ inputs.typesense-image != '' && 'http://typesense:8108' || '' }}
+      TYPESENSE_KEY: xyz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/composer-cache
+          key: composer-${{ github.repository }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ github.repository }}-
+
+      - name: Validate composer.json
+        run: composer validate --no-check-publish --no-check-lock
+
+      - name: Install (alone, dependencies resolved afresh)
+        run: |
+          composer update --no-progress --prefer-dist
+          composer show --direct --format=text
+
+      - name: Wait for Typesense
+        if: inputs.typesense-image != ''
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://typesense:8108/health | grep -q '"ok":true'; then echo "Typesense is up"; exit 0; fi
+            sleep 2
+          done
+          echo "Typesense did not answer" >&2; exit 1
+
+      - name: PHPUnit
+        run: vendor/bin/phpunit ${{ inputs.phpunit-args }}
+
+      - name: PHPStan (new violations fail, the baseline's do not)
+        if: inputs.phpstan
+        run: |
+          if [ ! -f phpstan-baseline.neon ]; then
+            phpstan analyse --no-progress --memory-limit=2G --allow-empty-baseline --generate-baseline=phpstan-baseline.neon || true
+            echo "::error::No phpstan-baseline.neon: the artifact phpstan-baseline holds the one this run wrote; commit it at the package root."
+            touch .phpstan-baseline-missing
+          else
+            phpstan analyse --no-progress --memory-limit=2G --error-format=github
+          fi
+
+      - name: Upload the generated baseline
+        if: always() && inputs.phpstan && hashFiles('.phpstan-baseline-missing') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: phpstan-baseline
+          path: phpstan-baseline.neon
+
+      - name: Fail without a baseline
+        if: inputs.phpstan && hashFiles('.phpstan-baseline-missing') != ''
+        run: exit 1
+
+      - name: Install as a consumer (no require-dev)
+        if: inputs.smoke-class != ''
+        env:
+          SMOKE_CLASS: ${{ inputs.smoke-class }}
+        run: |
+          name=$(php -r 'echo json_decode(file_get_contents("composer.json"), true)["name"];')
+          dir=$(mktemp -d)
+          cd "$dir"
+          composer init --no-interaction --name=ci/consumer --stability=dev
+          composer config prefer-stable true
+          # No plugin allowed: a package must install and load without one (omnibridge/composer stays optional).
+          composer config allow-plugins false
+          composer config repositories.package '{"type": "path", "url": "'"$GITHUB_WORKSPACE"'", "options": {"symlink": false, "versions": {"'"$name"'": "dev-ci"}}}'
+          composer require --no-progress --prefer-dist "$name:dev-ci"
+          php -r 'require "vendor/autoload.php"; $c = getenv("SMOKE_CLASS"); if (!class_exists($c) && !interface_exists($c) && !trait_exists($c) && !enum_exists($c)) { fwrite(STDERR, "$c is not autoloaded\n"); exit(1); } echo "$c autoloaded from a consumer install\n";'
