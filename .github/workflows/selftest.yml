@@ -22,6 +22,7 @@ jobs:
       matrix:
         include:
           - repository: glitchr-studio/omnibase
+            ref: 4.x
             phpunit: false
             phpstan: false
             consumer-require: 'omniscient/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
@@ -43,6 +44,7 @@ jobs:
     uses: ./.github/workflows/php-package.yml
     with:
       repository: ${{ matrix.repository }}
+      ref: ${{ matrix.ref || '' }}
       smoke-class: ${{ matrix.smoke }}
       typesense-image: ${{ matrix.typesense || '' }}
       phpunit: ${{ matrix.phpunit != false }}
