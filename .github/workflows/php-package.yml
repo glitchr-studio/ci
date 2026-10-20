@@ -56,6 +56,14 @@ on:
         description: A Typesense image to run beside the job, e.g. typesense/typesense:30.0.rca41; empty for none.
         type: string
         default: ''
+      repository:
+        description: The repository to check out (the caller's by default; selftest.yml names others).
+        type: string
+        default: ''
+      ref:
+        description: Its ref (the event's by default).
+        type: string
+        default: ''
       image:
         description: The CI image.
         type: string
@@ -89,12 +97,15 @@ jobs:
       TYPESENSE_KEY: xyz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.ref }}
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/composer-cache
-          key: composer-${{ github.repository }}-${{ hashFiles('composer.json') }}
-          restore-keys: composer-${{ github.repository }}-
+          key: composer-${{ inputs.repository || github.repository }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ inputs.repository || github.repository }}-
 
       - name: Validate composer.json
         run: composer validate --no-check-publish --no-check-lock

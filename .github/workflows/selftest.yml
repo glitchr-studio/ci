@@ -1,0 +1,41 @@
+# php-package.yml run here on every package that calls it, as each package's
+# own ci.yml does: a change to the shared workflow or to the image is seen
+# against all of them before they meet it.
+name: selftest
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/php-package.yml', '.github/workflows/selftest.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  package:
+    name: ${{ matrix.repository }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {repository: glitchr-studio/omnibridge, smoke: 'Omnibridge\Runtime'}
+          - {repository: glitchr-studio/omnibridge-symfony, smoke: 'Omnibridge\Symfony\OmnibridgeBundle'}
+          - {repository: glitchr-studio/omnibridge-laravel, smoke: 'Omnibridge\Laravel\OmnibridgeServiceProvider'}
+          - {repository: glitchr-studio/omnibridge-twig, smoke: 'Omnibridge\Twig\ContractExtension'}
+          - {repository: glitchr-studio/omnibridge-doctrine, smoke: 'Omnibridge\Doctrine\NamingStrategy'}
+          - {repository: glitchr-studio/omnibridge-react, smoke: 'Omnibridge\React\Protocol'}
+          - {repository: glitchr-studio/omnibridge-composer, smoke: 'Omnibridge\Composer\Plugin'}
+          - {repository: glitchr-studio/omniauth, smoke: 'Omniauth\Omniauth'}
+          - {repository: glitchr-studio/omniauth-passkey, smoke: 'Omniauth\Passkey\PasskeyMethod'}
+          - {repository: glitchr-studio/omniauth-totp, smoke: 'Omniauth\Totp\TotpMethod'}
+          - {repository: glitchr-studio/omniauth-oauth, smoke: 'Omniauth\OAuth\OAuthMethod'}
+          - {repository: glitchr-studio/omnisearch, smoke: 'Omnisearch\Registry'}
+          - {repository: glitchr-studio/omnisearch-typesense, smoke: 'Omnisearch\Typesense\TypesenseDriverFactory', typesense: 'typesense/typesense:30.0.rca41'}
+          - {repository: glitchr-studio/typesense-bundle, smoke: 'Typesense\Bundle\TypesenseInterface', typesense: 'typesense/typesense:27.1'}
+    uses: ./.github/workflows/php-package.yml
+    with:
+      repository: ${{ matrix.repository }}
+      smoke-class: ${{ matrix.smoke }}
+      typesense-image: ${{ matrix.typesense || '' }}
