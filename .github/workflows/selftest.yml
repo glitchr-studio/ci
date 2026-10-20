@@ -23,6 +23,7 @@ jobs:
         include:
           - repository: glitchr-studio/omnibase
             phpunit: false
+            phpstan: false
             consumer-require: 'omniscient/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
             consumer-script: 'OMNIBASE_AUTOLOAD="$PWD/vendor/autoload.php" php "$PACKAGE_DIR/docker/bin/bare"'
           - {repository: glitchr-studio/omnibridge, smoke: 'Omnibridge\Runtime'}
@@ -45,5 +46,6 @@ jobs:
       smoke-class: ${{ matrix.smoke }}
       typesense-image: ${{ matrix.typesense || '' }}
       phpunit: ${{ matrix.phpunit != false }}
+      phpstan: ${{ matrix.phpstan != false }}
       consumer-require: ${{ matrix.consumer-require || '' }}
       consumer-script: ${{ matrix.consumer-script || '' }}
