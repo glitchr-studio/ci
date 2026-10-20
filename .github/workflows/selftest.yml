@@ -24,7 +24,6 @@ jobs:
           - repository: glitchr-studio/omnibase
             ref: 4.x
             phpunit: false
-            phpstan: false
             consumer-require: 'omniscient/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
             consumer-script: 'OMNIBASE_AUTOLOAD="$PWD/vendor/autoload.php" php "$PACKAGE_DIR/docker/bin/bare"'
           - {repository: glitchr-studio/omnibridge, smoke: 'Omnibridge\Runtime'}
