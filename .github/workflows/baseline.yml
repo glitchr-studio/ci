@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   baseline:
@@ -33,6 +34,9 @@ jobs:
         package: ${{ fromJSON(inputs.packages) }}
     container:
       image: ghcr.io/glitchr-studio/php:8.4
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     env:
       COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ github.token }}"}}'
     steps:
