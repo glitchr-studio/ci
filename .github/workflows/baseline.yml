@@ -6,7 +6,9 @@
 #   gh workflow run baseline.yml -R glitchr-studio/ci \
 #     -f packages='[{"repository": "omnibridge", "ref": "1.x", "paths": "src tests"}]'
 #
-# "exclude" (space separated, optional) lists the paths left out. The
+# "exclude" (space separated, optional) lists the paths left out;
+# "require-dev" (optional) what the package's require-dev is about to take,
+# e.g. "phpstan/phpstan:^2.1". The
 # package's own PHPStan runs when its require-dev has one, the image's
 # otherwise, as in php-package.yml.
 name: baseline
@@ -48,7 +50,11 @@ jobs:
           ref: ${{ matrix.package.ref }}
 
       - name: Install (alone, dependencies resolved afresh)
-        run: composer update --no-progress --prefer-dist
+        env:
+          REQUIRE_DEV: ${{ matrix.package.require-dev }}
+        run: |
+          if [ -n "$REQUIRE_DEV" ]; then composer require --dev --no-update $REQUIRE_DEV; fi
+          composer update --no-progress --prefer-dist
 
       - name: Write the baseline
         env:
