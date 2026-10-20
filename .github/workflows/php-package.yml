@@ -13,13 +13,14 @@
 # them (a library's lock, when it keeps one, is not what its users install) -
 # then:
 #   1. composer validate;
-#   2. PHPUnit;
+#   2. PHPUnit (phpunit: false leaves it to the package's own harness);
 #   3. PHPStan with the package's phpstan.neon and its baseline
 #      (phpstan-baseline.neon): what the baseline lists is known, anything new
 #      fails the job. Without a baseline the job writes one, uploads it as the
 #      artifact "phpstan-baseline" and fails: commit it;
 #   4. the package installed again, without its require-dev, into an empty
-#      project, as a consumer does, and smoke-class autoloaded from it.
+#      project, as a consumer does, with no Composer plugin allowed, then
+#      consumer-script run there and smoke-class autoloaded from it.
 # typesense-image starts a Typesense server beside the job
 # (TYPESENSE_URL=http://typesense:8108, TYPESENSE_KEY=xyz).
 name: php-package
@@ -27,6 +28,10 @@ name: php-package
 on:
   workflow_call:
     inputs:
+      phpunit:
+        description: Run PHPUnit (the package's phpunit.xml.dist).
+        type: boolean
+        default: true
       phpunit-args:
         description: Arguments for vendor/bin/phpunit.
         type: string
@@ -37,6 +42,14 @@ on:
         default: true
       smoke-class:
         description: A class (or interface) the consumer install must autoload; empty skips that step.
+        type: string
+        default: ''
+      consumer-require:
+        description: Packages (space separated) the consumer install requires beside the package, e.g. what it suggests.
+        type: string
+        default: ''
+      consumer-script:
+        description: A command run in the consumer project after the install (PACKAGE_DIR is the checkout).
         type: string
         default: ''
       typesense-image:
@@ -101,17 +114,21 @@ jobs:
           echo "Typesense did not answer" >&2; exit 1
 
       - name: PHPUnit
+        if: inputs.phpunit
         run: vendor/bin/phpunit ${{ inputs.phpunit-args }}
 
       - name: PHPStan (new violations fail, the baseline's do not)
         if: inputs.phpstan
         run: |
+          # The package's own PHPStan when its require-dev pins one, the image's otherwise.
+          phpstan=phpstan; [ -x vendor/bin/phpstan ] && phpstan=vendor/bin/phpstan
+          $phpstan --version
           if [ ! -f phpstan-baseline.neon ]; then
-            phpstan analyse --no-progress --memory-limit=2G --allow-empty-baseline --generate-baseline=phpstan-baseline.neon || true
+            $phpstan analyse --no-progress --memory-limit=2G --allow-empty-baseline --generate-baseline=phpstan-baseline.neon || true
             echo "::error::No phpstan-baseline.neon: the artifact phpstan-baseline holds the one this run wrote; commit it at the package root."
             touch .phpstan-baseline-missing
           else
-            phpstan analyse --no-progress --memory-limit=2G --error-format=github
+            $phpstan analyse --no-progress --memory-limit=2G --error-format=github
           fi
 
       - name: Upload the generated baseline
@@ -126,9 +143,11 @@ jobs:
         run: exit 1
 
       - name: Install as a consumer (no require-dev)
-        if: inputs.smoke-class != ''
+        if: inputs.smoke-class != '' || inputs.consumer-script != ''
         env:
           SMOKE_CLASS: ${{ inputs.smoke-class }}
+          CONSUMER_REQUIRE: ${{ inputs.consumer-require }}
+          CONSUMER_SCRIPT: ${{ inputs.consumer-script }}
         run: |
           name=$(php -r 'echo json_decode(file_get_contents("composer.json"), true)["name"];')
           dir=$(mktemp -d)
@@ -138,5 +157,7 @@ jobs:
           # No plugin allowed: a package must install and load without one (omnibridge/composer stays optional).
           composer config allow-plugins false
           composer config repositories.package '{"type": "path", "url": "'"$GITHUB_WORKSPACE"'", "options": {"symlink": false, "versions": {"'"$name"'": "dev-ci"}}}'
-          composer require --no-progress --prefer-dist "$name:dev-ci"
-          php -r 'require "vendor/autoload.php"; $c = getenv("SMOKE_CLASS"); if (!class_exists($c) && !interface_exists($c) && !trait_exists($c) && !enum_exists($c)) { fwrite(STDERR, "$c is not autoloaded\n"); exit(1); } echo "$c autoloaded from a consumer install\n";'
+          composer require --no-progress --prefer-dist "$name:dev-ci" $CONSUMER_REQUIRE
+          export PACKAGE_DIR="$GITHUB_WORKSPACE"
+          if [ -n "$CONSUMER_SCRIPT" ]; then sh -c "$CONSUMER_SCRIPT"; fi
+          [ -z "$SMOKE_CLASS" ] || php -r 'require "vendor/autoload.php"; $c = getenv("SMOKE_CLASS"); if (!class_exists($c) && !interface_exists($c) && !trait_exists($c) && !enum_exists($c)) { fwrite(STDERR, "$c is not autoloaded\n"); exit(1); } echo "$c autoloaded from a consumer install\n";'

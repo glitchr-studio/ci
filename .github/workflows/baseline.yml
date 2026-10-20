@@ -6,7 +6,9 @@
 #   gh workflow run baseline.yml -R glitchr-studio/ci \
 #     -f packages='[{"repository": "omnibridge", "ref": "1.x", "paths": "src tests"}]'
 #
-# "exclude" (space separated, optional) lists the paths left out.
+# "exclude" (space separated, optional) lists the paths left out. The
+# package's own PHPStan runs when its require-dev has one, the image's
+# otherwise, as in php-package.yml.
 name: baseline
 
 on:
@@ -65,7 +67,9 @@ jobs:
             fi
           } > phpstan.ci.neon
           cat phpstan.ci.neon
-          phpstan analyse -c phpstan.ci.neon --no-progress --memory-limit=2G --allow-empty-baseline --generate-baseline=phpstan-baseline.neon
+          phpstan=phpstan; [ -x vendor/bin/phpstan ] && phpstan=vendor/bin/phpstan
+          $phpstan --version
+          $phpstan analyse -c phpstan.ci.neon --no-progress --memory-limit=2G --allow-empty-baseline --generate-baseline=phpstan-baseline.neon
           echo "Entries: $(grep -c 'message:' phpstan-baseline.neon || true), errors: $(grep -E '^\s+count:' phpstan-baseline.neon | awk '{s+=$2} END {print s+0}')"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
