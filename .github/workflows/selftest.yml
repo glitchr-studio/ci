@@ -1,6 +1,7 @@
 # php-package.yml run here on every package that calls it, as each package's
 # own ci.yml does: a change to the shared workflow or to the image is seen
-# against all of them before they meet it.
+# against all of them before they meet it. The core's harness job is its
+# own (omnibase's ci.yml), not run here.
 name: selftest
 
 on:
@@ -20,6 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - repository: glitchr-studio/omnibase
+            phpunit: false
+            consumer-require: 'omniscient/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
+            consumer-script: 'OMNIBASE_AUTOLOAD="$PWD/vendor/autoload.php" php "$PACKAGE_DIR/docker/bin/bare"'
           - {repository: glitchr-studio/omnibridge, smoke: 'Omnibridge\Runtime'}
           - {repository: glitchr-studio/omnibridge-symfony, smoke: 'Omnibridge\Symfony\OmnibridgeBundle'}
           - {repository: glitchr-studio/omnibridge-laravel, smoke: 'Omnibridge\Laravel\OmnibridgeServiceProvider'}
@@ -39,3 +44,6 @@ jobs:
       repository: ${{ matrix.repository }}
       smoke-class: ${{ matrix.smoke }}
       typesense-image: ${{ matrix.typesense || '' }}
+      phpunit: ${{ matrix.phpunit != false }}
+      consumer-require: ${{ matrix.consumer-require || '' }}
+      consumer-script: ${{ matrix.consumer-script || '' }}
