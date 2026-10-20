@@ -26,7 +26,7 @@ jobs:
           - {repository: glitchr-studio/omnibridge-twig, smoke: 'Omnibridge\Twig\ContractExtension'}
           - {repository: glitchr-studio/omnibridge-doctrine, smoke: 'Omnibridge\Doctrine\NamingStrategy'}
           - {repository: glitchr-studio/omnibridge-react, smoke: 'Omnibridge\React\Protocol'}
-          - {repository: glitchr-studio/omnibridge-composer, smoke: 'Omnibridge\Composer\Plugin'}
+          - {repository: glitchr-studio/omnibridge-composer, smoke: 'Omnibridge\Composer\Patch\Diff'}
           - {repository: glitchr-studio/omniauth, smoke: 'Omniauth\Omniauth'}
           - {repository: glitchr-studio/omniauth-passkey, smoke: 'Omniauth\Passkey\PasskeyMethod'}
           - {repository: glitchr-studio/omniauth-totp, smoke: 'Omniauth\Totp\TotpMethod'}
