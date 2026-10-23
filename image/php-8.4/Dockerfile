@@ -13,7 +13,7 @@
 # Composer and PHPStan are pinned: a job resolves the package's dependencies,
 # never its tools.
 
-ARG PHP_IMAGE=php:8.4.26-cli-bookworm@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+ARG PHP_IMAGE=php:8.4.27-cli-bookworm@sha256:496b5e02fe9fe44fcfb715023b931048111dc4e0bc719789d83c906be9f04b05
 FROM ${PHP_IMAGE}
 
 RUN apt-get update \
@@ -45,9 +45,10 @@ RUN curl -fsSL -o /usr/local/bin/phpstan "https://github.com/phpstan/phpstan/rel
     && chmod +x /usr/local/bin/phpstan \
     && phpstan --version
 
-# A checkout mounted by the runner belongs to another user.
+# A checkout mounted by the runner belongs to another user. Upload progress is
+# off: CVE-2026-109619's mitigation (php.net, 2026-10-21), and no suite needs it.
 RUN git config --system --add safe.directory '*' \
-    && echo "memory_limit = 1G" > /usr/local/etc/php/conf.d/zz-ci.ini
+    && printf 'memory_limit = 1G\nsession.upload_progress.enabled = 0\n' > /usr/local/etc/php/conf.d/zz-ci.ini
 
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_NO_INTERACTION=1 \
@@ -57,4 +58,5 @@ LABEL org.opencontainers.image.source="https://github.com/glitchr-studio/ci" \
       org.opencontainers.image.description="PHP 8.4 with Composer, PHPStan and the extensions the omni families' suites need" \
       org.opencontainers.image.licenses="MIT"
 
-RUN php -m && composer --version
+RUN php -m && composer --version \
+    && php -r 'exit(PHP_VERSION_ID >= 80427 && !ini_get("session.upload_progress.enabled") ? 0 : 1);'
