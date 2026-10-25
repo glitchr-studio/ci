@@ -1,0 +1,156 @@
+# The release of one PHP package of the omni families, on a pushed tag vX.Y.Z, called by the
+# package's own .github/workflows/release.yml after php-package.yml passed on that tag:
+#
+#   on:
+#     push:
+#       tags: ['v*']
+#   jobs:
+#     verify:
+#       uses: glitchr-studio/ci/.github/workflows/php-package.yml@<sha>
+#       with:
+#         smoke-class: Vendor\Package\Thing
+#     release:
+#       needs: verify
+#       permissions:
+#         contents: write        # the GitHub release
+#         id-token: write        # the provenance attestation
+#         attestations: write
+#       uses: glitchr-studio/ci/.github/workflows/php-release.yml@<sha>
+#       secrets: inherit         # PACKAGIST_USERNAME / PACKAGIST_TOKEN, when the repository has them
+#
+# Both pins are the caller's: this workflow calls nothing of this repository, so a release runs the
+# exact code its package pinned.
+#
+# Steps:
+#   1. the tag is a version (vMAJOR.MINOR.PATCH, a pre-release suffix allowed), composer.json names
+#      no other version, and the package's CHANGELOG.md has a section for it ("## [X.Y.Z]",
+#      "## X.Y.Z" or "## vX.Y.Z", a date after it allowed): that section is the release's notes;
+#   2. the source archive of the tag (git archive: what .gitattributes export-ignore leaves out stays
+#      out), its SHA-256, and a build provenance attestation for it (GitHub's, Sigstore);
+#   3. the GitHub release, its notes from the changelog, the archive and SHA256SUMS attached, marked
+#      pre-release for a suffixed tag or a 0.x version (prerelease: auto);
+#   4. Packagist told (update-package) when the repository holds PACKAGIST_USERNAME and
+#      PACKAGIST_TOKEN; otherwise a notice: Packagist's GitHub integration, or the maintainer's own
+#      update-package call, picks the tag up.
+# A tag is never moved or deleted here; a release that exists already fails the job.
+name: php-release
+
+on:
+  workflow_call:
+    inputs:
+      prerelease:
+        description: auto (a suffixed tag or a 0.x version), true or false.
+        type: string
+        default: auto
+      changelog:
+        description: The changelog file.
+        type: string
+        default: CHANGELOG.md
+      attest:
+        description: Attest the archive's build provenance (needs id-token and attestations write).
+        type: boolean
+        default: true
+    secrets:
+      PACKAGIST_USERNAME:
+        required: false
+      PACKAGIST_TOKEN:
+        required: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: The tag is a version, the changelog has its section
+        id: version
+        env:
+          CHANGELOG: ${{ inputs.changelog }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -eu
+          if [ "$GITHUB_REF_TYPE" != tag ]; then echo "::error::A release runs on a tag, not on $GITHUB_REF."; exit 1; fi
+          tag="$GITHUB_REF_NAME"
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::$tag is not a version tag (vMAJOR.MINOR.PATCH, a pre-release suffix allowed)."; exit 1
+          fi
+          version="${tag#v}"
+          declared=$(jq -r '.version // empty' composer.json)
+          if [ -n "$declared" ] && [ "$declared" != "$version" ]; then
+            echo "::error::composer.json says version $declared, the tag $version (better: no version in composer.json, the tag decides)."; exit 1
+          fi
+          if [ ! -f "$CHANGELOG" ]; then echo "::error::No $CHANGELOG."; exit 1; fi
+          # The section of this version: from its heading to the next "## ".
+          awk -v v="$version" '
+            BEGIN { found = 0 }
+            /^## / {
+              if (found) exit
+              h = $0; sub(/^## +/, "", h); gsub(/[\[\]]/, "", h); sub(/^v/, "", h); split(h, w, /[ \t]/)
+              if (w[1] == v) { found = 1; next }
+            }
+            found { print }
+          ' "$CHANGELOG" | sed -e '/./,$!d' > notes.md
+          if [ ! -s notes.md ] || ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::$CHANGELOG has no section for $version (## [$version], ## $version or ## v$version)."; exit 1
+          fi
+          case "$PRERELEASE" in
+            true|false) pre="$PRERELEASE" ;;
+            *) case "$version" in *-*|0.*) pre=true ;; *) pre=false ;; esac ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$pre"
+            echo "name=${GITHUB_REPOSITORY#*/}"
+          } >> "$GITHUB_OUTPUT"
+          echo "### $tag" >> "$GITHUB_STEP_SUMMARY"; cat notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The source archive
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          mkdir dist
+          git archive --format=zip --prefix="$NAME-$VERSION/" -o "dist/$NAME-$VERSION.zip" "$TAG"
+          (cd dist && sha256sum -- *.zip > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Build provenance
+        if: inputs.attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.zip
+
+      - name: The GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          set -eu
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "::error::A release $TAG exists already: a published version is not replaced."; exit 1; fi
+          flag=""; [ "$PRE" = true ] && flag="--prerelease"
+          gh release create "$TAG" --verify-tag --title "$VERSION" --notes-file notes.md $flag dist/*
+          gh release view "$TAG" --json url --jq .url
+
+      - name: Packagist
+        env:
+          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+        run: |
+          if [ -z "$PACKAGIST_USERNAME" ] || [ -z "$PACKAGIST_TOKEN" ]; then
+            echo "::notice::No PACKAGIST_USERNAME/PACKAGIST_TOKEN here: Packagist picks the tag up through its GitHub integration, or the maintainer calls update-package for https://github.com/$GITHUB_REPOSITORY."
+            exit 0
+          fi
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            "https://packagist.org/api/update-package?username=$PACKAGIST_USERNAME&apiToken=$PACKAGIST_TOKEN" \
+            -d "{\"repository\":{\"url\":\"https://github.com/$GITHUB_REPOSITORY\"}}"

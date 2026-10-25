@@ -20,4 +20,25 @@ jobs:
       # phpunit-args: --testsuite unit
 ```
 
+- `.github/workflows/php-release.yml`: the release, on a pushed tag `vX.Y.Z`, after `php-package.yml` passed on that tag: the tag checked as a version, the notes taken from the package's `CHANGELOG.md` section for it (a missing section fails), the tag's source archive with its SHA-256 and a build provenance attestation, the GitHub release (pre-release for a suffixed tag or a 0.x version), and Packagist's `update-package` when the repository holds `PACKAGIST_USERNAME`/`PACKAGIST_TOKEN` (otherwise Packagist's GitHub integration or the maintainer's call picks the tag up; the packages carry no Packagist webhook of their own).
+
+```yaml
+name: release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  verify:
+    uses: glitchr-studio/ci/.github/workflows/php-package.yml@<sha>
+    with:
+      smoke-class: Omnimap\MapLibre\MapLibreProvider
+  release:
+    needs: verify
+    permissions: {contents: write, id-token: write, attestations: write}
+    uses: glitchr-studio/ci/.github/workflows/php-release.yml@<sha>
+    secrets: inherit
+```
+
+Callers pin both workflows to a commit of this repository (the provider template does); `@main` follows every change.
+
 What it does not do: a version matrix. A package declares broad constraints and is tested on what they resolve to today, on PHP 8.4; the application's lock decides what runs.
