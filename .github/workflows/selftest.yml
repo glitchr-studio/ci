@@ -21,24 +21,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - repository: glitchr-studio/omnibase
+          - repository: glitchr-omnisense/omnibase
             ref: 4.x
             phpunit: false
-            consumer-require: 'omniscient/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
+            consumer-require: 'omnisense/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
             consumer-script: 'OMNIBASE_AUTOLOAD="$PWD/vendor/autoload.php" php "$PACKAGE_DIR/docker/bin/bare"'
-          - {repository: glitchr-studio/omnibridge, smoke: 'Omnibridge\Runtime'}
-          - {repository: glitchr-studio/omnibridge-symfony, smoke: 'Omnibridge\Symfony\OmnibridgeBundle'}
-          - {repository: glitchr-studio/omnibridge-laravel, smoke: 'Omnibridge\Laravel\OmnibridgeServiceProvider'}
-          - {repository: glitchr-studio/omnibridge-twig, smoke: 'Omnibridge\Twig\ContractExtension'}
-          - {repository: glitchr-studio/omnibridge-doctrine, smoke: 'Omnibridge\Doctrine\NamingStrategy'}
-          - {repository: glitchr-studio/omnibridge-react, smoke: 'Omnibridge\React\Protocol'}
-          - {repository: glitchr-studio/omnibridge-composer, smoke: 'Omnibridge\Composer\Patch\Diff'}
-          - {repository: glitchr-studio/omniauth, smoke: 'Omniauth\Omniauth'}
-          - {repository: glitchr-studio/omniauth-passkey, smoke: 'Omniauth\Passkey\PasskeyMethod'}
-          - {repository: glitchr-studio/omniauth-totp, smoke: 'Omniauth\Totp\TotpMethod'}
-          - {repository: glitchr-studio/omniauth-oauth, smoke: 'Omniauth\OAuth\OAuthMethod'}
-          - {repository: glitchr-studio/omnisearch, smoke: 'Omnisearch\Registry'}
-          - {repository: glitchr-studio/omnisearch-typesense, smoke: 'Omnisearch\Typesense\TypesenseDriverFactory', typesense: 'typesense/typesense:30.0.rca41'}
+          - {repository: glitchr-omnisense/omnibridge, smoke: 'Omnibridge\Runtime'}
+          - {repository: glitchr-omnisense/omnibridge-symfony, smoke: 'Omnibridge\Symfony\OmnibridgeBundle'}
+          - {repository: glitchr-omnisense/omnibridge-laravel, smoke: 'Omnibridge\Laravel\OmnibridgeServiceProvider'}
+          - {repository: glitchr-omnisense/omnibridge-twig, smoke: 'Omnibridge\Twig\ContractExtension'}
+          - {repository: glitchr-omnisense/omnibridge-doctrine, smoke: 'Omnibridge\Doctrine\NamingStrategy'}
+          - {repository: glitchr-omnisense/omnibridge-react, smoke: 'Omnibridge\React\Protocol'}
+          - {repository: glitchr-omnisense/omnibridge-composer, smoke: 'Omnibridge\Composer\Patch\Diff'}
+          - {repository: glitchr-omnisense/omniauth, smoke: 'Omniauth\Omniauth'}
+          - {repository: glitchr-omnisense/omniauth-passkey, smoke: 'Omniauth\Passkey\PasskeyMethod'}
+          - {repository: glitchr-omnisense/omniauth-totp, smoke: 'Omniauth\Totp\TotpMethod'}
+          - {repository: glitchr-omnisense/omniauth-oauth, smoke: 'Omniauth\OAuth\OAuthMethod'}
+          - {repository: glitchr-omnisense/omnisearch, smoke: 'Omnisearch\Registry'}
+          - {repository: glitchr-omnisense/omnisearch-typesense, smoke: 'Omnisearch\Typesense\TypesenseDriverFactory', typesense: 'typesense/typesense:30.0.rca41'}
           - {repository: glitchr-studio/typesense-bundle, smoke: 'Typesense\Bundle\TypesenseInterface', typesense: 'typesense/typesense:27.1'}
     uses: ./.github/workflows/php-package.yml
     with:

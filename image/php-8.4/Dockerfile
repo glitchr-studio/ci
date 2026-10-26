@@ -4,7 +4,7 @@
 # runs in, built once by .github/workflows/image.yml instead of apt-get and
 # docker-php-ext-install in each job.
 #
-# The extensions are the union of what the suites ask for: omniscient/omnibase
+# The extensions are the union of what the suites ask for: omnisense/omnibase
 # (intl, zip, gd, bcmath, ftp, xsl, exif, imagick, igbinary; git2 for the
 # forge's repository viewer), omnibridge/* (intl, bcmath, imagick), omniauth/*
 # (openssl, sodium), omnisearch/* and glitchr/typesense-bundle (curl, zip).
