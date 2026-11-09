@@ -21,10 +21,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # 5.x, the branch every site runs (4.x's own CI runs by hand only since 2026-11-09); the consumer
+          # requires what 5.x's ci.yml names.
           - repository: glitchr-omnisense/omnibase
-            ref: 4.x
+            ref: 5.x
             phpunit: false
-            consumer-require: 'omnisense/omniauth:1.x-dev omniauth/oauth:1.x-dev omniauth/passkey:1.x-dev omniauth/totp:1.x-dev'
+            consumer-require: 'omnisense/omniauth:1.x-dev omniauth/webauthn:1.x-dev omniauth/otp:1.x-dev'
             consumer-script: 'OMNIBASE_AUTOLOAD="$PWD/vendor/autoload.php" php "$PACKAGE_DIR/docker/bin/bare"'
           - {repository: glitchr-omnisense/omnibridge, smoke: 'Omnibridge\Runtime'}
           - {repository: glitchr-omnisense/omnibridge-symfony, smoke: 'Omnibridge\Symfony\OmnibridgeBundle'}
