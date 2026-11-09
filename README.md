@@ -20,18 +20,19 @@ jobs:
       # phpunit-args: --testsuite unit
 ```
 
-- `.github/workflows/php-release.yml`: the release, on a pushed tag `vX.Y.Z`, after `php-package.yml` passed on that tag: the tag checked as a version, the notes taken from the package's `CHANGELOG.md` section for it (a missing section fails), the tag's source archive with its SHA-256 and a build provenance attestation, the GitHub release (pre-release for a suffixed tag or a 0.x version), and Packagist's `update-package` when the repository holds `PACKAGIST_USERNAME`/`PACKAGIST_TOKEN` (otherwise Packagist's GitHub integration or the maintainer's call picks the tag up; the packages carry no Packagist webhook of their own).
+- `.github/workflows/php-release.yml`: the release, on a pushed tag `vX.Y.Z`, after the package's CI passed on that tag: the tag checked as a version, the tagged commit on a branch `extra.branch-alias` names and the version in that alias's series (`v1.2.0` on `1.x`: `1.x-dev`), the notes taken from the package's `CHANGELOG.md` section for it (a pre-release falls back on `X.Y.Z`'s, `X.Y`'s, then `Unreleased`; a final release needs its own), the tag's source archive with its SHA-256 and a build provenance attestation, the GitHub release (pre-release for a suffixed tag or a 0.x version), and Packagist's `update-package` when the repository holds `PACKAGIST_USERNAME`/`PACKAGIST_TOKEN` (otherwise Packagist's GitHub integration or the maintainer's call picks the tag up; the packages carry no Packagist webhook of their own). How to release, step by step: [docs/releasing.md](docs/releasing.md).
 
 ```yaml
 name: release
 on:
   push:
     tags: ['v*']
+permissions:
+  contents: read
 jobs:
   verify:
-    uses: glitchr-studio/ci/.github/workflows/php-package.yml@<sha>
-    with:
-      smoke-class: Omnimap\MapLibre\MapLibreProvider
+    uses: ./.github/workflows/ci.yml        # the package's own CI (on: workflow_call), on the tag
+    permissions: {contents: read, packages: read}
   release:
     needs: verify
     permissions: {contents: write, id-token: write, attestations: write}

@@ -1,5 +1,6 @@
 # The release of one PHP package of the omni families, on a pushed tag vX.Y.Z, called by the
-# package's own .github/workflows/release.yml after php-package.yml passed on that tag:
+# package's own .github/workflows/release.yml after its CI passed on that tag - php-package.yml, or the
+# package's own ci.yml called with `uses: ./.github/workflows/ci.yml` (docs/releasing.md):
 #
 #   on:
 #     push:
@@ -24,12 +25,18 @@
 # Steps:
 #   1. the tag is a version (vMAJOR.MINOR.PATCH, a pre-release suffix allowed), composer.json names
 #      no other version, and the package's CHANGELOG.md has a section for it ("## [X.Y.Z]",
-#      "## X.Y.Z" or "## vX.Y.Z", a date after it allowed): that section is the release's notes;
-#   2. the source archive of the tag (git archive: what .gitattributes export-ignore leaves out stays
+#      "## X.Y.Z" or "## vX.Y.Z", a date after it allowed): that section is the release's notes. A
+#      pre-release (X.Y.Z-rc.1...) without a section of its own takes X.Y.Z's, else the series' (X.Y),
+#      else "Unreleased" - a final release needs its own;
+#   2. the tag matches the branch alias: the tagged commit is on a branch composer.json's
+#      extra.branch-alias names ("dev-5.x": "5.0.x-dev", "dev-1.x": "1.x-dev"), and the version is in
+#      that alias's series (5.0.*, 1.*) - what `composer require vendor/package:5.0.x-dev` installed
+#      until now is what the tag releases; branch-alias: false skips it;
+#   3. the source archive of the tag (git archive: what .gitattributes export-ignore leaves out stays
 #      out), its SHA-256, and a build provenance attestation for it (GitHub's, Sigstore);
-#   3. the GitHub release, its notes from the changelog, the archive and SHA256SUMS attached, marked
+#   4. the GitHub release, its notes from the changelog, the archive and SHA256SUMS attached, marked
 #      pre-release for a suffixed tag or a 0.x version (prerelease: auto);
-#   4. Packagist told (update-package) when the repository holds PACKAGIST_USERNAME and
+#   5. Packagist told (update-package) when the repository holds PACKAGIST_USERNAME and
 #      PACKAGIST_TOKEN; otherwise a notice: Packagist's GitHub integration, or the maintainer's own
 #      update-package call, picks the tag up.
 # A tag is never moved or deleted here; a release that exists already fails the job.
@@ -50,6 +57,10 @@ on:
         description: Attest the archive's build provenance (needs id-token and attestations write).
         type: boolean
         default: true
+      branch-alias:
+        description: Check that the tagged commit is on a branch composer.json's extra.branch-alias names, and the version in that alias's series.
+        type: boolean
+        default: true
     secrets:
       PACKAGIST_USERNAME:
         required: false
@@ -68,6 +79,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every branch: the branch-alias check asks which ones hold the tagged commit.
+          fetch-depth: 0
 
       - name: The tag is a version, the changelog has its section
         id: version
@@ -87,19 +101,33 @@ jobs:
             echo "::error::composer.json says version $declared, the tag $version (better: no version in composer.json, the tag decides)."; exit 1
           fi
           if [ ! -f "$CHANGELOG" ]; then echo "::error::No $CHANGELOG."; exit 1; fi
-          # The section of this version: from its heading to the next "## ".
-          awk -v v="$version" '
-            BEGIN { found = 0 }
-            /^## / {
-              if (found) exit
-              h = $0; sub(/^## +/, "", h); gsub(/[\[\]]/, "", h); sub(/^v/, "", h); split(h, w, /[ \t]/)
-              if (w[1] == v) { found = 1; next }
-            }
-            found { print }
-          ' "$CHANGELOG" | sed -e '/./,$!d' > notes.md
-          if [ ! -s notes.md ] || ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error::$CHANGELOG has no section for $version (## [$version], ## $version or ## v$version)."; exit 1
+          # The section of a version: from its heading to the next "## ".
+          section() {
+            awk -v v="$1" '
+              BEGIN { found = 0 }
+              /^## / {
+                if (found) exit
+                h = $0; sub(/^## +/, "", h); gsub(/[\[\]]/, "", h); sub(/^v/, "", h); split(h, w, /[ \t]/)
+                if (tolower(w[1]) == tolower(v)) { found = 1; next }
+              }
+              found { print }
+            ' "$CHANGELOG" | sed -e '/./,$!d'
+          }
+          # A final release needs its own section; a pre-release falls back on its version's, its series', Unreleased.
+          candidates="$version"
+          case "$version" in
+            *-*) base="${version%%-*}"; candidates="$version $base ${base%.*} Unreleased" ;;
+          esac
+          used=""
+          for candidate in $candidates; do
+            section "$candidate" > notes.md
+            if [ -s notes.md ] && grep -q '[^[:space:]]' notes.md; then used="$candidate"; break; fi
+          done
+          if [ -z "$used" ]; then
+            echo "::error::$CHANGELOG has no section for $version (## [$version], ## $version or ## v$version$([ "$candidates" = "$version" ] || echo "; nor for ${candidates#* }"))."; exit 1
           fi
+          [ "$used" = "$version" ] || echo "::notice::No section of its own for $version in $CHANGELOG: the notes are the section \"$used\"."
+          echo "notes=$used" >> "$GITHUB_OUTPUT"
           case "$PRERELEASE" in
             true|false) pre="$PRERELEASE" ;;
             *) case "$version" in *-*|0.*) pre=true ;; *) pre=false ;; esac ;;
@@ -111,6 +139,36 @@ jobs:
             echo "name=${GITHUB_REPOSITORY#*/}"
           } >> "$GITHUB_OUTPUT"
           echo "### $tag" >> "$GITHUB_STEP_SUMMARY"; cat notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The tag matches the branch alias
+        if: inputs.branch-alias
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          aliases=$(jq -r '.extra["branch-alias"] // {} | to_entries[] | "\(.key) \(.value)"' composer.json)
+          if [ -z "$aliases" ]; then
+            echo "::error::composer.json declares no extra.branch-alias (\"dev-1.x\": \"1.x-dev\"): the tag cannot be checked against its branch (branch-alias: false skips the check)."; exit 1
+          fi
+          on=""
+          while read -r key alias; do
+            branch="${key#dev-}"
+            git rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null || continue
+            git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/$branch" || continue
+            series="${alias%-dev}"; series="${series%.x}"
+            case "$VERSION" in
+              "$series".*) echo "$GITHUB_REF_NAME is on $branch, whose alias $alias is the series $series.x."; exit 0 ;;
+            esac
+            on="$on $branch ($alias)"
+          done <<EOF
+          $aliases
+          EOF
+          if [ -n "$on" ]; then
+            echo "::error::$GITHUB_REF_NAME is on$on: its version $VERSION is not that alias's series."
+          else
+            echo "::error::$GITHUB_REF_NAME is on no branch extra.branch-alias names ($(echo "$aliases" | tr '\n' ' ')): tag a commit of the branch the version belongs to."
+          fi
+          exit 1
 
       - name: The source archive
         env:
