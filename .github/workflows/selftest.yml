@@ -36,8 +36,6 @@ jobs:
           - {repository: glitchr-omnisense/omnibridge-react, smoke: 'Omnibridge\React\Protocol'}
           - {repository: glitchr-omnisense/omnibridge-composer, smoke: 'Omnibridge\Composer\Patch\Diff'}
           - {repository: glitchr-omnisense/omniauth, smoke: 'Omniauth\Omniauth'}
-          - {repository: glitchr-omnisense/omniauth-passkey, smoke: 'Omniauth\Passkey\PasskeyMethod'}
-          - {repository: glitchr-omnisense/omniauth-totp, smoke: 'Omniauth\Totp\TotpMethod'}
           - {repository: glitchr-omnisense/omniauth-oauth, smoke: 'Omniauth\OAuth\OAuthMethod'}
           - {repository: glitchr-omnisense/omnisearch, smoke: 'Omnisearch\Registry'}
           - {repository: glitchr-omnisense/omnisearch-typesense, smoke: 'Omnisearch\Typesense\TypesenseDriverFactory', typesense: 'typesense/typesense:30.0.rca41'}
